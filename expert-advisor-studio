@@ -1,0 +1,414 @@
+# code for reactor
+import pandas as pd
+import datetime
+import os
+import random
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver import ActionChains
+from selenium.webdriver.support.ui import Select
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
+import time
+from PIL import Image
+import io
+file_wait_time = 1
+data_source = 'FXCM-USDDemo01'
+
+opts = Options()
+opts.headless = False
+# opts.add_argument("user-data-dir=ChromeSession")
+date_str = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+dl_path = os.path.join(os.getcwd(), 'scrape-{}'.format(date_str))
+os.makedirs(dl_path, exist_ok=True)
+prefs = {'download.default_directory': dl_path,'profile.default_content_setting_values.automatic_downloads': 1}
+opts.add_experimental_option('prefs', prefs)
+driver = webdriver.Chrome(options=opts)
+driver.set_script_timeout(30)
+driver.set_page_load_timeout(30)
+driver.get("https://expert-advisor-studio.com/?partner=fxacademy")
+# change the line below if you get webdriver error on execution. You have to add executable_path="path to chromedriver"
+# like this 
+#driver = webdriver.Chrome(executable_path="C:/Windows/chromedriver.exe",options=opts)
+
+
+def is_el_visible(xpath):
+    try:
+        driver.find_element_by_xpath(xpath)
+        return True
+    except:
+        return False
+    
+def settings_file_upload():
+    driver.find_element_by_id('eas-navbar-tools-link').click()
+    settings_file = os.getcwd()+'\EA Studio Settings 2020-06-03.json'
+    time.sleep(3)
+    import_settings = driver.find_element_by_xpath('//input[@type=\"file\"]')
+    import_settings.send_keys(settings_file)
+    print(f'Settings file {settings_file} uploaded.')
+
+def wait_for_el_to_be_visible(xpath):
+    x = 0
+    while x < 30:
+        try:
+            myElem = WebDriverWait(driver, 999999).until(
+                EC.presence_of_element_located((By.XPATH,
+                                                xpath)))
+            return True
+        except:
+            x = x + 1
+            time.sleep(0.05)
+    print("{} could not be found".format(xpath))
+    return False
+
+
+def click_el_by_xpath(xpath):
+    driver.execute_script("arguments[0].click();", driver.find_element_by_xpath(xpath))
+
+
+def wait_and_click(xpath):
+    if wait_for_el_to_be_visible(xpath):
+        click_el_by_xpath(xpath)
+
+
+def input_el_by_xpath(xpath, value):
+    if wait_for_el_to_be_visible(xpath):
+        driver.find_element_by_xpath(xpath).send_keys(value)
+
+
+def login_and_browse_to_page():
+    if driver.find_element_by_id('user-sign-in-email').is_displayed():
+#         driver.find_element_by_id('user-sign-in-email').send_keys('raxenok170@tmail2.com')
+#         driver.find_element_by_id('user-sign-in-password').send_keys('q8BKYgJ5')
+        driver.find_element_by_id('user-sign-in-email').send_keys('scifundcorp@gmail.com')
+        driver.find_element_by_id('user-sign-in-password').send_keys('eatcTeam14')
+        driver.find_element_by_id('user-sign-in-password').send_keys(Keys.ENTER)
+        print('Successfully logged in.')
+        time.sleep(2)
+
+def scrape_strategy():
+    time.sleep(2)
+    files = [i for i in os.listdir(dl_path) if i.endswith('mq4')]
+    try:
+        mq5_file = [i for i in os.listdir(dl_path) if i.endswith('mq5')][0]
+    except:
+        return
+    file = files[0]
+    dir_name = file[10:-4]
+    new_dir = os.path.join(dl_path, dir_name)
+    os.makedirs(new_dir)
+    src = os.path.join(dl_path, file)
+    dest = os.path.join(new_dir, file)
+    os.rename(src, dest)
+    src_mq5 = os.path.join(dl_path, mq5_file)
+    dest_mq5 = os.path.join(new_dir, mq5_file)
+    os.rename(src_mq5, dest_mq5)
+    os.rename(os.path.join(new_dir,[i for i in os.listdir(new_dir) if i.endswith('mq4')][0]),os.path.join(new_dir,[i[10:] for i in os.listdir(new_dir) if i.endswith('mq4')][0]))
+    os.rename(os.path.join(new_dir,[i for i in os.listdir(new_dir) if i.endswith('mq5')][0]),os.path.join(new_dir,[i[10:] for i in os.listdir(new_dir) if i.endswith('mq5')][0]))
+   
+    # scraping begins
+    keys, values = [], []
+    stop_loss = "none"
+    take_profit = "none"
+    if wait_for_el_to_be_visible('//h4[text()="Strategy Properties"]'):
+        try:
+            stop_loss_text, take_profit_text = \
+            driver.find_element_by_xpath('//h4[text()="Strategy Properties"]/following-sibling::p').text.split('\n')[
+                1].split(',')
+            stop_loss = stop_loss_text.split()[-1]
+            take_profit = take_profit_text.split()[-1]
+        except:
+            pass
+
+    keys.extend(["Stop Loss", "Take Profit"])
+    values.extend([stop_loss.strip(), take_profit.strip()])
+    try:
+        long_entry_text = driver.find_element_by_xpath('id("long-entry-rules-tab")').text.split('\n')[1:-1]
+    except:
+        long_entry_text = []
+    click_el_by_xpath('//a[text()="Short entry"]')
+    try:
+        short_entry_text = driver.find_element_by_xpath('id("short-entry-rules-tab")').text.split('\n')[1:]
+    except:
+        short_entry_text = []
+    try:
+        long_exit_text = driver.find_element_by_xpath('id("long-exit-rules-tab")').text.split('\n')[1:-1]
+    except:
+        long_exit_text = []
+    click_el_by_xpath('//a[text()="Short exit"]')
+    try:
+        short_exit_text = driver.find_element_by_xpath('id("short-exit-rules-tab")').text.split('\n')[1:]
+    except:
+        short_exit_text = ""
+
+    keys.extend(["Long Entry", "Short Entry", "Long Exit", "Short Exit"])
+    values.extend([' - '.join(long_entry_text), ' - '.join(short_entry_text), ' - '.join(long_exit_text),
+                   ' - '.join(short_exit_text)])
+    wait_and_click("id('eas-navbar-report-link')")
+    # charts
+    wait_and_click("id('stats-tab')")
+    dir_name = dir_name
+    dir_path = os.path.join(dl_path, dir_name)
+    title = 'Count of entries by weekdays'
+    if wait_for_el_to_be_visible('id("entries-by-weekdays")'):
+        chart_path = os.path.join(dir_path, dir_name + ' ' + title + '.png')
+        element = driver.find_element_by_id('entries-by-weekdays')
+        location = element.location_once_scrolled_into_view
+        size = element.size
+        img = driver.get_screenshot_as_png()
+        img = Image.open(io.BytesIO(img))
+        left = location['x']
+        top = location['y']
+        right = left + size['width']
+        bottom = top + size['height']
+        cropBox = (left, top, right, bottom)
+        img = img.crop(cropBox)
+        img.save(chart_path)
+    backtest_output = []
+    if wait_for_el_to_be_visible('id("backtest-output-table")'):
+        # backtest output
+        table = driver.find_element_by_id('backtest-output-table')
+        elements = table.find_elements_by_tag_name('td')
+        i = 0
+        for _ in range(len(elements) // 2):
+            keys.append(elements[i].text)
+            values.append(elements[i + 1].text)
+            i+=2
+        backtest_output = [keys, values]
+    file = os.path.join(new_dir, dir_name + ' Backtest Output.csv')
+    outfile = open(file, "w")
+    for row in backtest_output:
+        outfile.write('"' + '","'.join(row) + '"\n')
+    outfile.close()
+
+    # Monthly performance in currency
+    output = []
+    output.append(
+        ["Year", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Total"])
+    tbl = driver.find_element_by_id('monthly-performance-table')
+    rows = tbl.find_elements_by_tag_name('tr')
+    for row in rows:
+        output.append(['{}'.format(x.text) for x in row.find_elements_by_tag_name('td')])
+    file = os.path.join(new_dir, dir_name + ' Monthly Performance.csv')
+    outfile = open(file, "w")
+    for row in output:
+        outfile.write('"' + '","'.join(row) + '"\n')
+    outfile.close()
+
+    # journal file
+    wait_and_click('id("journal-tab")')
+    wait_and_click('id("report-journal-export")')
+    time.sleep(file_wait_time)
+    csv = [i for i in os.listdir(dl_path) if i.endswith('csv')][0]
+    src = os.path.join(dl_path, csv)
+    dest = os.path.join(new_dir, dir_name + ' Journal.csv')
+    os.rename(src, dest)
+    ### code to download parameters table
+    driver.find_element_by_id('eas-navbar-strategy-link').click()
+    time.sleep(1)
+    driver.find_element_by_id('eas-navbar-normalizer-link').click()
+    if wait_for_el_to_be_visible('//table[@class="table table-condensed"]'):
+        table = driver.find_element_by_xpath('//table[@class="table table-condensed"]')
+        rows = table.text.split('\n')
+        c = []
+        for i in rows:
+            if '%' not in i:
+                c.append(i.split(' '))
+            else:
+                c.append(i.split('%'))        
+        parameters = pd.DataFrame(c)
+        new_header = parameters.iloc[0]
+        parameters = parameters[1:]
+        parameters.columns = new_header
+        file = os.path.join(new_dir, dir_name + ' parameters.csv')
+
+        parameters.to_csv(file,index=False)
+    ################################################################
+
+
+    ### code to take screenshots of indicator chart under Report Tab
+    report = driver.find_element_by_id('eas-navbar-report-link')
+    driver.execute_script("arguments[0].click();", report)
+    i_c = driver.find_element_by_id('indicator-chart-tab')
+    driver.execute_script("arguments[0].click();", i_c)
+#     driver.execute_script("document.body.style.zoom='0.75'")
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    actionChains = ActionChains(driver)
+    for i in range(5):
+    #     element = driver.find_element_by_id('report-indicator-chart-canvas')
+        element = driver.find_element_by_id('indicator-chart-tab-pane')
+        actionChains.drag_and_drop_by_offset(element, 500, 0).perform()
+        file = os.path.join(dir_path, dir_name + ' ' +f'indicator_chart_{i}.png')
+        element = driver.find_element_by_id('indicator-chart-tab-pane')
+        location = element.location_once_scrolled_into_view
+        size = element.size
+        img = driver.get_screenshot_as_png()
+        img = Image.open(io.BytesIO(img))
+        left = location['x']
+        top = location['y']
+        right = left + size['width']
+        bottom = top + size['height']
+        cropBox = (left, top, right, bottom)
+        img = img.crop(cropBox)
+        img.save(file)
+    ################################################################    
+
+    ### code to download OOS monitor data
+#     driver.execute_script("document.body.style.zoom='1'")
+    oos = driver.find_element_by_id('eas-navbar-oos-monitor-link')
+    driver.execute_script("arguments[0].click();", oos)
+#     time.sleep(2)
+    myElem = WebDriverWait(driver, 999999).until(EC.presence_of_element_located((By.ID,'out-of-sample-select')))
+    oos = Select(driver.find_element_by_id('out-of-sample-select'))
+    options_oos = [i.text for i in oos.options]
+    for option_oos in options_oos[1:]:
+        oos.select_by_visible_text(option_oos)
+        time.sleep(1)
+        image = driver.find_element_by_id('balance-chart-canvas')
+        file = os.path.join(new_dir, dir_name +f' {option_oos} balance_chart.png')
+
+        image.screenshot(file)
+        rt = driver.find_element_by_id('review-table')
+        rows_rt = rt.find_elements_by_tag_name('tr')
+        review_table_data = []
+        for i in range(len(rows_rt)):
+            elements = [i.text for i in rows_rt[i].find_elements_by_tag_name('td')]
+            review_table_data.append(elements)
+        rtd = pd.DataFrame(review_table_data)
+        rtd.columns = rtd.iloc[0]
+        rtd = rtd[1:]
+        file = os.path.join(new_dir, dir_name +f' {option_oos} Review Table Data.csv')
+
+        rtd.to_csv(file,index=False)
+
+
+        keys1=[]
+        values1=[]
+        table = driver.find_element_by_id('backtest-stats-in-sample')
+        elements = table.find_elements_by_tag_name('td')
+        i = 0
+        for _ in range(len(elements) // 2):
+            keys1.append(elements[i].text)
+            values1.append(elements[i + 1].text)
+            i+=2
+        in_sample_training = [keys1, values1]
+        df_ist = pd.DataFrame(in_sample_training)
+        df_ist.columns = df_ist.iloc[0]
+        df_ist = df_ist[1:]
+        file = os.path.join(new_dir, dir_name +f' {option_oos} In_sample_part.csv')
+
+        df_ist.to_csv(file,index=False)
+
+        keys2 = []
+        values2 = []
+        table = driver.find_element_by_id('backtest-stats-out-of-sample')
+        elements = table.find_elements_by_tag_name('td')
+        i = 0
+        for _ in range(len(elements) // 2):
+            keys2.append(elements[i].text)
+            values2.append(elements[i + 1].text)
+            i+=2
+        out_sample_training = [keys2, values2]
+        df_ost = pd.DataFrame(out_sample_training)
+        df_ost.columns = df_ost.iloc[0]
+        df_ost = df_ost[1:]
+        file = os.path.join(new_dir, dir_name +f' {option_oos} Out_sample_part.csv')
+        df_ost.to_csv(file,index=False)
+
+        keys3 = []
+        values3 = []
+        table = driver.find_element_by_id('backtest-stats-complete-backtest')
+        elements = table.find_elements_by_tag_name('td')
+        i = 0
+        for _ in range(len(elements) // 2):
+            keys3.append(elements[i].text)
+            values3.append(elements[i + 1].text)
+            i+=2
+        out_sample_training = [keys3, values3]
+        df_cbt = pd.DataFrame(out_sample_training)
+        df_cbt.columns = df_cbt.iloc[0]
+        df_cbt = df_cbt[1:]
+        file = os.path.join(new_dir, dir_name +f' {option_oos} Complete_backtest.csv')
+
+        df_cbt.to_csv(file,index=False)    
+        #######
+    collection = driver.find_element_by_xpath('//a[@id="eas-navbar-collection-link"]')
+    driver.execute_script("arguments[0].click();", collection)
+    print("Scraped {} successfully!".format(dir_name))
+    
+def download_strategies():
+    while True:
+        myElem = WebDriverWait(driver, 999999).until(EC.presence_of_element_located((By.XPATH,'//body')))
+        status = driver.find_element_by_xpath('//body').text
+        if 'The collection is empty' in status:
+            break
+        strategy = driver.find_element_by_xpath('//a[@class="list-group-item eas-collection-tile"]')
+        dl_strategy = strategy.find_element_by_xpath('div[@class="collection-record-action-button collection-record-export-ea4"]/i')
+        driver.execute_script("arguments[0].click();", dl_strategy)
+        strategy_mq5 = strategy.find_element_by_xpath('div[@class="collection-record-action-button collection-record-export-ea5"]/i')
+        driver.execute_script("arguments[0].click();", strategy_mq5)
+        driver.execute_script("arguments[0].click();", strategy)
+        scrape_strategy()
+        strategy = driver.find_element_by_xpath('//a[@class="list-group-item eas-collection-tile"]')
+        remove_strategy = strategy.find_element_by_xpath('div[@class="eas-slot-close-button"]/i')
+        driver.execute_script("arguments[0].click();", remove_strategy)
+        
+    print('All strategies successfully downloaded and scraped.')
+time.sleep(2)
+login_and_browse_to_page()
+settings_file_upload()
+
+time.sleep(1)
+try:
+    driver.find_element_by_id("acquisition-toggle").click()
+    time.sleep(1)
+    driver.find_element_by_id("eas-navbar-reactor-link").click()
+except:
+    pass
+time.sleep(2)
+
+wait = WebDriverWait(driver, 999999)
+
+s1 = Select(driver.find_element_by_id('data-symbol-control'))
+s2 = Select(driver.find_element_by_id('data-period-control'))
+#df=pd.read_csv('assets.csv') 
+df=pd.read_csv('assets - Copy.csv')
+#df=pd.read_csv('assets - Copy (2).csv')
+
+symbols = list(df.dropna(axis=0, subset=['symbol'])['symbol'])
+periods = list(df.dropna(axis=0, subset=['timeframe'])['timeframe'])
+
+print('Assets : ',symbols)
+print('Periods : ',periods)
+
+for symbol in symbols:
+    for period in periods:
+        s1 = Select(driver.find_element_by_id('data-symbol-control'))
+        s2 = Select(driver.find_element_by_id('data-period-control'))
+        dsc = Select(driver.find_element_by_id('data-source-control'))
+        dsc.select_by_visible_text(data_source)
+        s1.select_by_visible_text(symbol)
+        s2.select_by_visible_text(period)
+        while driver.find_element_by_id('button-start-stop').text == "Start":
+            driver.find_element_by_xpath('//span[text()="Start"]').click()
+        print(f'Working on {symbol} {period}')
+        element = WebDriverWait(driver, 999999).until(EC.presence_of_element_located((By.XPATH, '//span[text()="100 %"]')))
+        collection = driver.find_element_by_xpath('//a[@id="eas-navbar-collection-link"]')
+        driver.execute_script("arguments[0].click();", collection)
+        time.sleep(2)
+        download = driver.find_element_by_xpath('//span[text()="Download"]')
+        driver.execute_script("arguments[0].click();", download)
+        time.sleep(2)
+        download_strategies()
+        remove_all_collection = driver.find_element_by_id('remove-all-button')
+        driver.execute_script("arguments[0].click();", remove_all_collection)
+        time.sleep(2)
+        validator = driver.find_element_by_id('acquisition-link')
+        driver.execute_script("arguments[0].click();", validator)
+        time.sleep(2)
+        reset = driver.find_element_by_xpath('//span[text()="Reset"]')
+        driver.execute_script("arguments[0].click();", reset)
+driver.quit()
+
